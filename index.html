@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realistic Virtual Physics Lab</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DragControls.js"></script>
+
+    <style>
+        :root {
+            --primary: #00d2ff;
+            --secondary: #3a7bd5;
+            --dark: #0f0c29;
+            --panel: rgba(20, 20, 35, 0.95);
+            --text: #ffffff;
+            --success: #00b09b;
+            --danger: #ff416c;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--dark);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        /* --- NAVIGATION --- */
+        nav {
+            position: fixed;
+            top: 0; width: 100%;
+            height: 60px;
+            background: rgba(0,0,0,0.9);
+            border-bottom: 1px solid #444;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            z-index: 1000;
+        }
+
+        .logo { font-size: 1.4rem; font-weight: bold; color: var(--primary); letter-spacing: 1px; }
+        
+        .nav-links button {
+            background: transparent;
+            border: none;
+            color: #aaa;
+            margin-left: 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .nav-links button:hover, .nav-links button.active {
+            color: white;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* --- PAGES --- */
+        .page {
+            position: absolute;
+            top: 60px; left: 0; width: 100%; height: calc(100% - 60px);
+            display: none;
+            overflow-y: auto;
+        }
+
+        .page.active { display: block; }
+
+        /* --- HOME PAGE --- */
+        #home-page {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        #home-page h1 { font-size: 3.5rem; margin-bottom: 10px; color: var(--primary); }
+        #home-page p { font-size: 1.2rem; max-width: 600px; color: #ccc; margin-bottom: 30px; }
+        
+        .cta-btn {
+            padding: 15px 40px;
+            font-size: 1.2rem;
+            background: var(--secondary);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .cta-btn:hover { transform: scale(1.05); background: var(--primary); }
+
+        /* --- THEORY PAGE --- */
+        #theory-page { padding: 40px; background: #1a1a1a; }
+        .content-box { max-width: 800px; margin: 0 auto; }
+        .theory-card { background: #2a2a2a; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid var(--primary); }
+
+        /* --- LAB PAGE (3D) --- */
+        #lab-container { width: 100%; height: 100%; position: relative; background: #000; }
+        
+        /* Lab Overlay Controls */
+        #lab-ui {
+            position: absolute;
+            bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--panel);
+            padding: 15px 30px;
+            border-radius: 15px;
+            display: flex;
+            gap: 15px;
+            border: 1px solid #444;
+            align-items: center;
+        }
+
+        .lab-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        }
+        
+        .btn-fwd { background: var(--success); color: white; }
+        .btn-rev { background: var(--danger); color: white; }
+        .btn-reset { background: #555; color: white; }
+        .btn-micro { background: var(--secondary); color: white; display: none; margin-left: 15px; border: 1px solid var(--primary); }
+
+        #status-display {
+            position: absolute;
+            top: 20px; right: 20px;
+            background: var(--panel);
+            padding: 20px;
+            border-radius: 10px;
+            width: 260px;
+            border: 1px solid #444;
+        }
+        .status-badge { display: inline-block; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; margin-top: 5px; background: #555; }
+
+        #move-hint {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(0,0,0,0.6); padding: 10px; border-radius: 5px; color: #aaa; font-size: 0.9rem;
+            pointer-events: none;
+        }
+
+        /* --- MICROSCOPIC OVERLAY --- */
+        #micro-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .canvas-container { display: flex; gap: 30px; margin-top: 30px; flex-wrap: wrap; justify-content: center; }
+        canvas { background: #222; border: 2px solid #444; border-radius: 8px; box-shadow: 0 0 20px rgba(0,210,255,0.2); }
+
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo">PHYSLAB Pro</div>
+        <div class="nav-links">
+            <button onclick="showPage('home')" class="active">Home</button>
+            <button onclick="showPage('theory')">Theory</button>
+            <button onclick="showPage('lab')">Virtual Lab</button>
+        </div>
+    </nav>
+
+    <div id="home-page" class="page active">
+        <h1>PN Junction Laboratory</h1>
+        <p>Welcome to the advanced virtual physics environment.</p>
+        <p>Arrange components on the workbench, connect circuits, and analyze semiconductor physics in 3D.</p>
+        <button class="cta-btn" onclick="showPage('lab')">Enter Laboratory</button>
+    </div>
+
+    <div id="theory-page" class="page">
+        <div class="content-box">
+            <h2>PN Junction Fundamentals</h2>
+            <div class="theory-card">
+                <h3>The Depletion Region</h3>
+                <p>When P-type and N-type materials join, electrons and holes diffuse across the junction and recombine. This creates a region near the junction depleted of mobile charge carriers, establishing a built-in potential barrier.</p>
+            </div>
+            <div class="theory-card" style="border-left-color: var(--success);">
+                <h3>Forward Bias Condition</h3>
+                <p>Connecting positive voltage to the P-side pushes majority carriers towards the junction, overcoming the potential barrier. The depletion region narrows, and significant current flows.</p>
+            </div>
+            <div class="theory-card" style="border-left-color: var(--danger);">
+                <h3>Reverse Bias Condition</h3>
+                <p>Connecting positive voltage to the N-side pulls majority carriers away from the junction. The depletion region widens, increasing the barrier height. Only negligible leakage current flows.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="lab-page" class="page">
+        <div id="lab-container"></div>
+        <div id="move-hint">Hint: You can click and drag components to arrange them.</div>
+
+        <div id="status-display">
+            <div style="font-size: 0.9rem; color: #aaa;">Circuit State</div>
+            <div id="lab-status-text" class="status-badge">OPEN CIRCUIT</div>
+            <div style="margin-top: 15px; font-size: 0.9rem; color: #aaa;">Voltmeter Reading</div>
+            <div id="voltmeter" style="font-size: 1.8rem; font-family: monospace; color: var(--primary);">0.00 V</div>
+        </div>
+
+        <div id="lab-ui">
+            <button class="lab-btn btn-fwd" onclick="wireCircuit('forward')">Snap & Connect Forward</button>
+            <button class="lab-btn btn-rev" onclick="wireCircuit('reverse')">Snap & Connect Reverse</button>
+            <button class="lab-btn btn-reset" onclick="wireCircuit('open')">Disconnect All</button>
+            <button id="micro-btn" class="lab-btn btn-micro" onclick="openMicroscope()">Microscopic View</button>
+        </div>
+
+        <div id="micro-overlay">
+            <h2 style="color:white; margin-bottom: 10px;">Microscopic Analysis</h2>
+            <p id="micro-desc" style="color:#ccc; max-width: 600px; text-align: center;">Select a bias configuration in the lab first.</p>
+            <div class="canvas-container">
+                <div>
+                    <h4 style="text-align:center; color:#aaa; margin-bottom: 10px;">Physical Junction View</h4>
+                    <canvas id="junctionCanvas" width="450" height="300"></canvas>
+                </div>
+                <div>
+                    <h4 style="text-align:center; color:#aaa; margin-bottom: 10px;">Energy Band Diagram</h4>
+                    <canvas id="bandCanvas" width="450" height="300"></canvas>
+                </div>
+            </div>
+            <button class="lab-btn btn-reset" style="margin-top:30px; padding: 10px 30px;" onclick="closeMicroscope()">Return to Workbench</button>
+        </div>
+    </div>
+
+    <script>
+        // --- PAGE NAVIGATION ---
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-links button').forEach(b => b.classList.remove('active'));
+            document.getElementById(pageId + '-page').classList.add('active');
+            const index = ['home', 'theory', 'lab'].indexOf(pageId);
+            if(index >= 0) document.querySelectorAll('.nav-links button')[index].classList.add('active');
+
+            if(pageId === 'lab' && camera) {
+                setTimeout(onWindowResize, 100);
+            }
+        }
+
+        // --- 3D LAB ENGINE ---
+        let scene, camera, renderer, orbitControls, dragControls;
+        let ledGroup, ledLight, diodeGroup, batteryGroup;
+        let wires = [];
+        let draggableObjects = [];
+        let currentBias = 'open';
+        const TABLE_Y = 0;
+
+        function initLab() {
+            const container = document.getElementById('lab-container');
+            
+            // 1. Scene & Environment setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x121212);
+            scene.fog = new THREE.FogExp2(0x121212, 0.02);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / (window.innerHeight - 60), 0.1, 100);
+            camera.position.set(0, 12, 15);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight - 60);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            container.appendChild(renderer.domElement);
+
+            // 2. Controls
+            orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+            orbitControls.enableDamping = true;
+            orbitControls.maxPolarAngle = Math.PI / 2.1; // Don't go under table
+
+            // 3. Lighting (Realistic Lab)
+            const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+            scene.add(ambient);
+
+            // Overhead fluorescent style lights
+            const light1 = new THREE.PointLight(0xffffff, 0.8, 50);
+            light1.position.set(5, 15, 5);
+            light1.castShadow = true;
+            scene.add(light1);
+            
+            const light2 = new THREE.PointLight(0xffffff, 0.5, 50);
+            light2.position.set(-5, 15, -5);
+            scene.add(light2);
+
+            // 4. Environment Objects
+            createLabRoom();
+            createComponents();
+
+            // 5. Dragging capability
+            setupDragControls();
+
+            animate();
+        }
+
+        function createLabRoom() {
+            // Floor
+            const floorGeo = new THREE.PlaneGeometry(50, 50);
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8, metalness: 0.2 });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -3;
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            // Workbench Table
+            const tableTopGeo = new THREE.BoxGeometry(16, 0.5, 8);
+            // Simple wood texture simulation using colors/roughness
+            const tableTopMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.7, name: 'wood' });
+            const tableTop = new THREE.Mesh(tableTopGeo, tableTopMat);
+            tableTop.position.y = TABLE_Y - 0.25;
+            tableTop.receiveShadow = true;
+            tableTop.castShadow = true;
+            scene.add(tableTop);
+
+            // Metal Legs
+            const legGeo = new THREE.CylinderGeometry(0.2, 0.2, 3);
+            const legMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8, roughness: 0.2 });
+            const positions = [[-7, -1.75, 3], [7, -1.75, 3], [-7, -1.75, -3], [7, -1.75, -3]];
+            positions.forEach(pos => {
+                const leg = new THREE.Mesh(legGeo, legMat);
+                leg.position.set(...pos);
+                leg.castShadow = true;
+                scene.add(leg);
+            });
+        }
+
+        function createComponents() {
+            // --- Battery Pack ---
+            batteryGroup = new THREE.Group();
+            const batBody = new THREE.Mesh(new THREE.BoxGeometry(2.5, 1.2, 1.5), new THREE.MeshStandardMaterial({ color: 0x222, roughness: 0.5 }));
+            
+            // Terminals (screws)
+            const termGeo = new THREE.CylinderGeometry(0.15, 0.15, 0.4);
+            const posTerm = new THREE.Mesh(termGeo, new THREE.MeshStandardMaterial({color: 0xff0000, metalness:0.5}));
+            posTerm.position.set(0.8, 0.7, 0);
+            const negTerm = new THREE.Mesh(termGeo, new THREE.MeshStandardMaterial({color: 0x000000, metalness:0.5}));
+            negTerm.position.set(-0.8, 0.7, 0);
+            
+            batteryGroup.add(batBody, posTerm, negTerm);
+            batteryGroup.position.set(-5, TABLE_Y + 0.6, 2);
+            scene.add(batteryGroup);
+            draggableObjects.push(batteryGroup);
+
+            // --- PN Diode (Axial Lead Style) ---
+            diodeGroup = new THREE.Group();
+            // Body
+            const diodeBody = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 1), new THREE.MeshStandardMaterial({ color: 0x111 }));
+            diodeBody.rotation.z = Math.PI/2;
+            // Cathode band band
+            const band = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.2), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness:0.6 }));
+            band.rotation.z = Math.PI/2;
+            band.position.x = 0.4;
+            // Leads
+            const leadGeo = new THREE.CylinderGeometry(0.05, 0.05, 1);
+            const leadMat = new THREE.MeshStandardMaterial({color: 0xaaaaaa, metalness: 0.8});
+            const lead1 = new THREE.Mesh(leadGeo, leadMat); lead1.rotation.z = Math.PI/2; lead1.position.x = -1;
+            const lead2 = new THREE.Mesh(leadGeo, leadMat); lead2.rotation.z = Math.PI/2; lead2.position.x = 1;
+
+            diodeGroup.add(diodeBody, band, lead1, lead2);
+            diodeGroup.position.set(0, TABLE_Y + 0.3, 0);
+            scene.add(diodeGroup);
+            draggableObjects.push(diodeGroup);
+
+            // --- LED ---
+            ledGroup = new THREE.Group();
+            // Bulb
+            const bulbGeo = new THREE.SphereGeometry(0.4, 32, 32);
+            // Emissive material for glow capability
+            const bulbMat = new THREE.MeshPhysicalMaterial({ 
+                color: 0x550000, transparent: true, opacity: 0.9, transmission: 0.2, roughness: 0, emissive: 0x000000
+            });
+            const ledMesh = new THREE.Mesh(bulbGeo, bulbMat);
+            ledMesh.position.y = 0.8;
+            ledLight = new THREE.PointLight(0xff0000, 0, 5);
+            ledLight.position.y = 0.8;
+
+            // Base & Legs
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.2), bulbMat);
+            base.position.y = 0.5;
+            const legGeoNew = new THREE.CylinderGeometry(0.04, 0.04, 0.6);
+            const legMatNew = new THREE.MeshStandardMaterial({color:0xaaaaaa, metalness: 0.8});
+            const legA = new THREE.Mesh(legGeoNew, legMatNew); legA.position.set(-0.15, 0.2, 0);
+            const legC = new THREE.Mesh(legGeoNew, legMatNew); legC.position.set(0.15, 0.2, 0);
+            
+            ledGroup.add(ledMesh, base, legA, legC, ledLight);
+            ledGroup.position.set(5, TABLE_Y + 0.1, 2);
+            scene.add(ledGroup);
+            draggableObjects.push(ledGroup);
+        }
+
+        function setupDragControls() {
+            dragControls = new THREE.DragControls(draggableObjects, camera, renderer.domElement);
+            
+            dragControls.addEventListener('dragstart', function (event) {
+                orbitControls.enabled = false; // Disable camera movement while dragging
+                // Lift slightly
+                event.object.position.y += 0.2;
+                // Clear wires if we move things
+                if(currentBias !== 'open') wireCircuit('open');
+            });
+
+            dragControls.addEventListener('drag', function(event) {
+                 // Keep objects bounded roughly on the table area and above surface
+                 event.object.position.y = Math.max(TABLE_Y + 0.3, event.object.position.y);
+            });
+
+            dragControls.addEventListener('dragend', function (event) {
+                orbitControls.enabled = true;
+                // Drop back down
+                event.object.position.y = TABLE_Y + (event.object === batteryGroup ? 0.6 : 0.3);
+            });
+        }
+
+        function createWirePath(points, colorHex) {
+            const path = new THREE.CatmullRomCurve3(points);
+            const tube = new THREE.TubeGeometry(path, 20, 0.04, 8, false);
+            const mesh = new THREE.Mesh(tube, new THREE.MeshStandardMaterial({ color: colorHex, metalness: 0.3, roughness: 0.6 }));
+            scene.add(mesh);
+            wires.push(mesh);
+        }
+
+        // --- INTERACTION & WIRING ---
+        window.wireCircuit = function(mode) {
+            currentBias = mode;
+            wires.forEach(w => scene.remove(w));
+            wires = [];
+
+            const statusText = document.getElementById('lab-status-text');
+            const voltDisplay = document.getElementById('voltmeter');
+            const microBtn = document.getElementById('micro-btn');
+            const ledMeshObj = ledGroup.children[0]; // The bulb mesh
+
+            // Reset LED
+            ledMeshObj.material.color.setHex(0x550000);
+            ledMeshObj.material.emissive.setHex(0x000000);
+            ledLight.intensity = 0;
+
+            if (mode === 'open') {
+                statusText.innerText = "OPEN CIRCUIT"; statusText.style.background = "#555";
+                voltDisplay.innerText = "0.00 V";
+                microBtn.style.display = 'none';
+                return;
+            }
+
+            // SNAP POSITIONS: Move components to neat positions for wiring
+            batteryGroup.position.set(-4, TABLE_Y + 0.6, 0);
+            diodeGroup.position.set(0, TABLE_Y + 0.3, 0); diodeGroup.rotation.y = 0;
+            ledGroup.position.set(4, TABLE_Y + 0.1, 0);
+
+            // Define connection points based on snapped positions
+            const batPos = batteryGroup.position.clone();
+            const diodePos = diodeGroup.position.clone();
+            const ledPos = ledGroup.position.clone();
+            
+            // Hardcoded offsets for terminals based on model geometry
+            const batP = batPos.clone().add(new THREE.Vector3(0.8, 0.7, 0)); 
+            const batN = batPos.clone().add(new THREE.Vector3(-0.8, 0.7, 0));
+            const diodeAnode = diodePos.clone().add(new THREE.Vector3(-1.2, 0, 0));
+            const diodeCathode = diodePos.clone().add(new THREE.Vector3(1.2, 0, 0));
+            const ledAnode = ledPos.clone().add(new THREE.Vector3(-0.15, 0.1, 0));
+            const ledCathode = ledPos.clone().add(new THREE.Vector3(0.15, 0.1, 0));
+
+            if (mode === 'forward') {
+                // Wires with slight curves for realism
+                createWirePath([batP, new THREE.Vector3(-2, 1, 0), diodeAnode], 0xff0000); // Bat+ -> Diode P
+                createWirePath([diodeCathode, new THREE.Vector3(2, 0.5, 0), ledAnode], 0xffff00); // Diode N -> LED A
+                createWirePath([ledCathode, new THREE.Vector3(0, 2, 2), batN], 0x111111); // LED C -> Bat -
+
+                // LED Glow Effect
+                ledMeshObj.material.color.setHex(0xff3333);
+                ledMeshObj.material.emissive.setHex(0xff0000);
+                ledMeshObj.material.emissiveIntensity = 1.5;
+                ledLight.intensity = 2;
+
+                statusText.innerText = "FORWARD BIASED"; statusText.style.background = "#00b09b";
+                voltDisplay.innerText = "0.71 V";
+            } 
+            else if (mode === 'reverse') {
+                // Bat+ -> Diode N
+                createWirePath([batP, new THREE.Vector3(-2, 1, 1), diodeCathode], 0xff0000); 
+                // Diode P -> LED A
+                createWirePath([diodeAnode, new THREE.Vector3(2, 0.5, -1), ledAnode], 0xffff00); 
+                // LED C -> Bat -
+                createWirePath([ledCathode, new THREE.Vector3(0, 2, 2), batN], 0x111111);
+
+                // No Glow
+                ledMeshObj.material.color.setHex(0x330000);
+                
+                statusText.innerText = "REVERSE BIASED"; statusText.style.background = "#ff416c";
+                voltDisplay.innerText = "-8.95 V";
+            }
+            microBtn.style.display = 'inline-block';
+        };
+
+        function animate() {
+            requestAnimationFrame(animate);
+            orbitControls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / (window.innerHeight - 60);
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight - 60);
+        }
+        window.addEventListener('resize', onWindowResize);
+
+        // --- MICROSCOPIC VIEW (2D CANVAS) ---
+        window.openMicroscope = function() {
+            document.getElementById('micro-overlay').style.display = 'flex';
+            drawMicroPhysics();
+        };
+
+        window.closeMicroscope = function() {
+            document.getElementById('micro-overlay').style.display = 'none';
+        };
+
+        function drawMicroPhysics() {
+            const jCtx = document.getElementById('junctionCanvas').getContext('2d');
+            const bCtx = document.getElementById('bandCanvas').getContext('2d');
+            jCtx.clearRect(0,0,450,300); bCtx.clearRect(0,0,450,300);
+
+            let depletionW = (currentBias === 'forward') ? 30 : 140;
+            let barrierH = (currentBias === 'forward') ? 30 : 120;
+            
+            document.getElementById('micro-desc').innerHTML = (currentBias === 'forward') 
+                ? "<strong>Forward Bias:</strong> External voltage pushes carriers against the barrier. The depletion region narrows significantly, allowing majority carriers to cross easily. Current flows."
+                : "<strong>Reverse Bias:</strong> External voltage pulls carriers away. The depletion region widens, increasing the potential barrier. Majority carriers are blocked.";
+
+            // --- Physical Junction ---
+            // P-region
+            let gradP = jCtx.createLinearGradient(0,0,225,0); gradP.addColorStop(0, '#2193b0'); gradP.addColorStop(1, '#6dd5ed');
+            jCtx.fillStyle = gradP; jCtx.fillRect(25, 50, 200, 200);
+            jCtx.fillStyle = "white"; jCtx.font = "bold 16px Arial"; jCtx.fillText("P-Type (Holes+)", 60, 150);
+            // N-region
+            let gradN = jCtx.createLinearGradient(225,0,450,0); gradN.addColorStop(0, '#ee0979'); gradN.addColorStop(1, '#ff6a00');
+            jCtx.fillStyle = gradN; jCtx.fillRect(225, 50, 200, 200);
+            jCtx.fillStyle = "white"; jCtx.fillText("N-Type (e-)", 280, 150);
+            // Depletion
+            jCtx.fillStyle = "rgba(0,0,0,0.5)"; jCtx.fillRect(225 - depletionW/2, 50, depletionW, 200);
+            jCtx.strokeStyle = "#fff"; jCtx.setLineDash([4,4]); jCtx.strokeRect(225 - depletionW/2, 50, depletionW, 200);
+            jCtx.fillStyle = "#fff"; jCtx.fillText("Depletion Region", 165, 270);
+
+            // --- Energy Bands ---
+            bCtx.strokeStyle = "white"; bCtx.lineWidth = 3; bCtx.setLineDash([]);
+            let pStartEc = 80; 
+            let nStartEc = 80 + barrierH;
+            // Conduction Band
+            bCtx.beginPath(); bCtx.moveTo(40, pStartEc);
+            bCtx.bezierCurveTo(225, pStartEc, 225, nStartEc, 410, nStartEc); bCtx.stroke();
+            bCtx.fillStyle = "#00d2ff"; bCtx.fillText("Conduction Band (Ec)", 40, pStartEc - 15);
+            // Valence Band
+            let gap = 120;
+            bCtx.beginPath(); bCtx.moveTo(40, pStartEc + gap);
+            bCtx.bezierCurveTo(225, pStartEc + gap, 225, nStartEc + gap, 410, nStartEc + gap); bCtx.stroke();
+            bCtx.fillStyle = "#3a7bd5"; bCtx.fillText("Valence Band (Ev)", 40, pStartEc + gap + 25);
+            // Fermi Level
+            bCtx.strokeStyle = "#FFD700"; bCtx.lineWidth = 2; bCtx.setLineDash([8,6]);
+            bCtx.beginPath(); bCtx.moveTo(40, 140); bCtx.lineTo(410, 140); bCtx.stroke();
+             bCtx.fillStyle = "#FFD700"; bCtx.fillText("Fermi Level (Ef)", 300, 130);
+        }
+
+        window.addEventListener('load', initLab);
+    </script>
+</body>
+</html>
